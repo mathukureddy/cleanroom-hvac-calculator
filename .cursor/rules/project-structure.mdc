@@ -1,0 +1,88 @@
+---
+alwaysApply: true
+---
+
+# Cleanroom HVAC Calculator - Project Structure
+
+## Main Entry Points
+
+- Backend: backend/server.js - Express server
+- Frontend: frontend/src/index.js - React app entry
+- Database Init: backend/config/initDb.js - Database setup
+
+## Backend Structure
+
+```
+backend/
+├── config/
+│   ├── database.js          # MySQL connection pool
+│   └── initDb.js            # Database initialization
+├── controllers/
+│   ├── authController.js    # Authentication (login, register)
+│   ├── customerController.js # Customer management (admin)
+│   ├── projectController.js  # Project CRUD operations
+│   └── standardController.js # Standards and classifications
+├── middleware/
+│   └── auth.js              # JWT authentication middleware
+├── routes/
+│   ├── auth.js              # /api/auth/* routes
+│   ├── customers.js         # /api/customers/* routes
+│   ├── projects.js          # /api/projects/* routes
+│   └── standards.js         # /api/standards/* routes
+├── services/
+│   └── calculationService.js # HVAC calculation engine
+├── .env                     # Environment variables
+├── package.json
+└── server.js               # Main server file
+```
+
+## Frontend Structure
+
+```
+frontend/
+├── public/
+│   └── index.html
+├── src/
+│   ├── components/
+│   │   ├── Navbar.js        # Navigation bar
+│   │   └── PrivateRoute.js  # Protected route wrapper
+│   ├── pages/
+│   │   ├── Login.js         # Login page
+│   │   ├── Register.js      # Registration page
+│   │   ├── Dashboard.js     # Main dashboard
+│   │   ├── CustomerManagement.js  # Admin customer page
+│   │   ├── ProjectList.js   # All projects list
+│   │   ├── ProjectWizard.js # 3-step project creation
+│   │   └── ProjectDetails.js # Project view with calculations
+│   ├── services/
+│   │   └── api.js           # API service layer
+│   ├── App.js               # Main app component
+│   ├── App.css              # Global styles
+│   └── index.js             # React entry point
+└── package.json
+```
+
+## Database Tables
+
+1. CUSTOMER - Customer profiles
+2. LOGIN - Authentication credentials
+3. ROOM_STANDARDS - 12 cleanroom standards
+4. CLASSIFICATIONS - 68 classifications with ACPH
+5. PROJECT - Project information
+6. PROJECT_ZONE - Zone configurations
+7. ZONE_ROOM - Room dimensions
+8. PROJECT_ZONE_CALCULATIONS - Calculated HVAC values
+
+## Key Configuration
+
+- Backend Port: 5001 (configurable in .env)
+- Frontend Port: 3000 (React default)
+- Database: MySQL cleanroom_db
+- Authentication: JWT tokens
+
+## Important Files
+
+- backend/.env - Database credentials
+- backend/services/calculationService.js - HVAC formulas
+- frontend/src/services/api.js - API integration
+- docs/DESIGN.md - Complete system documentation

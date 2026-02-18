@@ -1,0 +1,189 @@
+---
+description: API implementation patterns for Express.js backend with MySQL
+globs: backend/**/*.js,backend/controllers/*,backend/routes/*,backend/services/*
+---
+
+# API Implementation Guide for Cleanroom HVAC Calculator
+
+## Project Structure Reference
+
+- Controllers: backend/controllers - Handle HTTP requests/responses
+- Routes: backend/routes - Define API endpoints
+- Services: backend/services - Business logic and calculations
+- Middleware: backend/middleware - Authentication and validation
+- Database: backend/config/database.js - MySQL connection pool
+
+## Authentication Patterns
+
+### Middleware Usage
+```javascript
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+
+// Protected route (any authenticated user)
+router.get('/resource', authMiddleware, controller.getResource);
+
+// Admin-only route
+router.post('/admin', authMiddleware, adminMiddleware, controller.adminAction);
+```
+
+## Controller Patterns
+
+### Standard Controller Structure
+```javascript
+const db = require('../config/database');
+
+exports.getAll = async (req, res) => {
+  try {
+    const [results] = await db.query('SELECT * FROM table_name');
+    res.json(results);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.create = async (req, res) => {
+  try {
+    const { field1, field2 } = req.body;
+    
+    if (!field1 || !field2) {
+      return res.status(400).json({ message: 'Required fields missing' });
+    }
+    
+    const [result] = await db.query(
+      'INSERT INTO table_name (field1, field2) VALUES (?, ?)',
+      [field1, field2]
+    );
+    
+    res.status(201).json({ 
+      message: 'Created successfully',
+      id: result.insertId 
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+```
+
+## Route Patterns
+
+```javascript
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/resourceController');
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+
+router.get('/', authMiddleware, controller.getAll);
+router.get('/:id', authMiddleware, controller.getById);
+router.post('/', authMiddleware, controller.create);
+router.put('/:id', authMiddleware, controller.update);
+router.delete('/:id', authMiddleware, controller.delete);
+
+module.exports = router;
+```
+
+## Database Patterns
+
+### Using Connection Pool
+```javascript
+// Parameterized query (prevents SQL injection)
+const [rows] = await db.query(
+  'SELECT * FROM table WHERE field = ?',
+  [value]
+);
+```
+
+### Using Transactions
+```javascript
+const connection = await db.getConnection();
+
+try {
+  await connection.beginTransaction();
+  
+  const [result1] = await connection.query('INSERT INTO table1...');
+  const [result2] = await connection.query('INSERT INTO table2...');
+  
+  await connection.commit();
+  res.status(201).json({ message: 'Success' });
+} catch (error) {
+  await connection.rollback();
+  res.status(500).json({ message: 'Transaction failed' });
+} finally {
+  connection.release();
+}
+```
+
+## Error Handling
+
+### Standard Error Responses
+```javascript
+// 400 - Bad Request
+return res.status(400).json({ message: 'Invalid data provided' });
+
+// 401 - Unauthorized
+return res.status(401).json({ message: 'Authentication required' });
+
+// 403 - Forbidden
+return res.status(403).json({ message: 'Access denied' });
+
+// 404 - Not Found
+return res.status(404).json({ message: 'Resource not found' });
+
+// 500 - Server Error
+return res.status(500).json({ message: 'Server error' });
+```
+
+## Authorization Patterns
+
+```javascript
+// Check user role
+if (req.user.role !== 'admin') {
+  return res.status(403).json({ message: 'Admin access required' });
+}
+
+// Check resource ownership
+const [resources] = await db.query(
+  'SELECT customer_id FROM resource WHERE id = ?',
+  [req.params.id]
+);
+
+if (req.user.role !== 'admin' && resources[0].customer_id !== req.user.customerId) {
+  return res.status(403).json({ message: 'Access denied' });
+}
+```
+
+## Input Validation
+
+```javascript
+const { field1, field2, field3 } = req.body;
+
+if (!field1 || !field2 || !field3) {
+  return res.status(400).json({ 
+    message: 'Please provide all required fields' 
+  });
+}
+
+// Validate email
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+if (!emailRegex.test(email)) {
+  return res.status(400).json({ message: 'Invalid email format' });
+}
+```
+
+## Best Practices
+
+1. Always use parameterized queries to prevent SQL injection
+2. Always handle errors with try-catch blocks
+3. Validate input before database operations
+4. Use appropriate HTTP status codes
+5. Check authorization before data access
+6. Use transactions for multiple related operations
+7. Release connections when using manual connections
+8. Return consistent response formats
+
+## Reference Implementations
+
+- backend/controllers/projectController.js - Complex CRUD with nested resources
+- backend/controllers/customerController.js - Admin-only CRUD
+- backend/controllers/authController.js - Authentication patterns

@@ -1,0 +1,6 @@
+Use '/Users/credd9/Downloads/cleanroom-app1/BOD-PB-C-Pilot.xlsx' file as reference for building the logic.
+write a python code to build the same features the BOD-PB-C-Pilot.xlsx is doing to prepare the offers.
+Input data to be read in UI page to calculate the offers. 
+react.js code to build the UI page.
+Aurora RDS table to be used to store the static data used to calculate the offers.
+Static data can be configurable from UI page.

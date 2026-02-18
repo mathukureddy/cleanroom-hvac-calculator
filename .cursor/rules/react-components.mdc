@@ -1,0 +1,156 @@
+---
+description: React component patterns and best practices for frontend
+globs: frontend/src/**/*.js,frontend/src/components/*,frontend/src/pages/*
+---
+
+# React Component Patterns for Cleanroom HVAC Calculator
+
+## Component Structure
+
+### Functional Components with Hooks
+```javascript
+import React, { useState, useEffect } from 'react';
+import { apiService } from '../services/api';
+
+const MyComponent = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const response = await apiService.getAll();
+      setData(response.data);
+    } catch (error) {
+      setError(error.response?.data?.message || 'Error loading data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="loading"><div className="spinner"></div></div>;
+  }
+
+  return (
+    <div className="container">
+      {error && <div className="alert alert-error">{error}</div>}
+      {/* Component content */}
+    </div>
+  );
+};
+
+export default MyComponent;
+```
+
+## API Integration
+
+### Using API Services
+```javascript
+import { projectService, customerService, standardService } from '../services/api';
+
+// GET request
+const response = await projectService.getAll();
+const projects = response.data;
+
+// POST request
+const response = await projectService.create(projectData);
+
+// PUT request
+await projectService.update(id, updatedData);
+
+// DELETE request
+await projectService.delete(id);
+```
+
+## Form Handling
+
+### Controlled Form Components
+```javascript
+const [formData, setFormData] = useState({
+  field1: '',
+  field2: '',
+  field3: ''
+});
+
+const handleChange = (e) => {
+  setFormData({
+    ...formData,
+    [e.target.name]: e.target.value
+  });
+};
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  try {
+    await apiService.create(formData);
+    alert('Success!');
+  } catch (error) {
+    alert('Error: ' + error.response?.data?.message);
+  }
+};
+
+return (
+  <form onSubmit={handleSubmit}>
+    <input
+      name="field1"
+      value={formData.field1}
+      onChange={handleChange}
+      required
+    />
+    <button type="submit">Submit</button>
+  </form>
+);
+```
+
+## Navigation
+
+### Using React Router
+```javascript
+import { useNavigate, useParams, Link } from 'react-router-dom';
+
+const MyComponent = () => {
+  const navigate = useNavigate();
+  const { id } = useParams();
+
+  const handleAction = () => {
+    navigate('/destination');
+  };
+
+  return (
+    <div>
+      <Link to="/path">Go to Page</Link>
+      <button onClick={handleAction}>Navigate</button>
+    </div>
+  );
+};
+```
+
+## CSS Classes
+
+Use existing classes from App.css:
+- `.container` - Main container
+- `.card` - Card layout
+- `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger` - Buttons
+- `.form-group`, `.form-label`, `.form-control` - Forms
+- `.table` - Tables
+- `.alert`, `.alert-error`, `.alert-success` - Alerts
+- `.loading`, `.spinner` - Loading states
+
+## Best Practices
+
+1. Use functional components with hooks
+2. Handle loading and error states
+3. Use try-catch for async operations
+4. Clean up with useEffect return
+5. Use controlled components for forms
+6. Validate input before submission
+7. Provide user feedback (success/error messages)
+8. Use semantic HTML
+9. Follow existing CSS patterns
+10. Keep components focused and reusable

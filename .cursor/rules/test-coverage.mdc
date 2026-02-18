@@ -1,0 +1,617 @@
+---
+description: Testing patterns and test coverage guidelines for backend and frontend
+globs: **/*.test.js,**/*.spec.js,backend/tests/*,frontend/src/**/__tests__/*
+---
+
+# Test Coverage Guide for Cleanroom HVAC Calculator
+
+## Testing Stack
+
+### Backend Testing
+- **Framework:** Jest
+- **HTTP Testing:** Supertest
+- **Database:** Mock or Test Database
+- **Coverage Tool:** Jest Coverage
+
+### Frontend Testing
+- **Framework:** Jest + React Testing Library
+- **Component Testing:** @testing-library/react
+- **User Events:** @testing-library/user-event
+- **Mock API:** msw (Mock Service Worker) or jest.mock
+
+## Backend Testing Patterns
+
+### Setup Test Environment
+
+```javascript
+// backend/tests/setup.js
+const db = require('../config/database');
+
+beforeAll(async () => {
+  // Setup test database
+  await db.query('CREATE DATABASE IF NOT EXISTS cleanroom_test');
+  await db.query('USE cleanroom_test');
+  // Run migrations
+});
+
+afterAll(async () => {
+  // Cleanup
+  await db.end();
+});
+```
+
+### Controller Testing Pattern
+
+```javascript
+// backend/tests/controllers/projectController.test.js
+const request = require('supertest');
+const app = require('../../server');
+const db = require('../../config/database');
+
+describe('Project Controller', () => {
+  let authToken;
+  let testCustomerId;
+
+  beforeAll(async () => {
+    // Create test user and get token
+    const response = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'testuser', password: 'testpass' });
+    authToken = response.body.token;
+  });
+
+  afterEach(async () => {
+    // Clean up test data
+    await db.query('DELETE FROM PROJECT WHERE customer_id = ?', [testCustomerId]);
+  });
+
+  describe('POST /api/projects', () => {
+    it('should create a new project', async () => {
+      const projectData = {
+        projectName: 'Test Project',
+        projectLocation: 'Test Location',
+        zones: []
+      };
+
+      const response = await request(app)
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(projectData)
+        .expect(201);
+
+      expect(response.body).toHaveProperty('projectId');
+      expect(response.body.message).toBe('Project created successfully');
+    });
+
+    it('should return 400 for missing required fields', async () => {
+      const response = await request(app)
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ projectName: 'Test' })
+        .expect(400);
+
+      expect(response.body.message).toContain('required');
+    });
+
+    it('should return 401 without authentication', async () => {
+      await request(app)
+        .post('/api/projects')
+        .send({ projectName: 'Test' })
+        .expect(401);
+    });
+  });
+
+  describe('GET /api/projects/:id', () => {
+    let projectId;
+
+    beforeEach(async () => {
+      // Create test project
+      const [result] = await db.query(
+        'INSERT INTO PROJECT (customer_id, project_name, project_location) VALUES (?, ?, ?)',
+        [testCustomerId, 'Test Project', 'Test Location']
+      );
+      projectId = result.insertId;
+    });
+
+    it('should retrieve project by id', async () => {
+      const response = await request(app)
+        .get(`/api/projects/${projectId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('project_name', 'Test Project');
+      expect(response.body).toHaveProperty('zones');
+    });
+
+    it('should return 404 for non-existent project', async () => {
+      await request(app)
+        .get('/api/projects/99999')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
+    });
+  });
+});
+```
+
+### Service Testing Pattern
+
+```javascript
+// backend/tests/services/calculationService.test.js
+const calculationService = require('../../services/calculationService');
+
+describe('Calculation Service', () => {
+  describe('calculateRoomHVAC', () => {
+    it('should calculate basic HVAC parameters', async () => {
+      const roomData = {
+        length: 5,
+        width: 4,
+        height: 2.4,
+        peopleCount: 2,
+        equipmentLoad: 3,
+        lighting: 1.75
+      };
+
+      const zoneData = {
+        acphMin: 150,
+        acphMax: 240,
+        classification: 'ISO 6'
+      };
+
+      const result = await calculationService.calculateRoomHVAC(roomData, zoneData);
+
+      expect(result).toHaveProperty('area');
+      expect(result).toHaveProperty('volume');
+      expect(result).toHaveProperty('roomCfm');
+      expect(result).toHaveProperty('coolingLoadTr');
+      expect(result.area).toBe(20); // 5 * 4
+      expect(result.volume).toBe(48); // 5 * 4 * 2.4
+    });
+
+    it('should handle zero values correctly', async () => {
+      const roomData = {
+        length: 3,
+        width: 3,
+        height: 2.4,
+        peopleCount: 0,
+        equipmentLoad: 0,
+        lighting: 1.75
+      };
+
+      const zoneData = {
+        acphMin: 150,
+        acphMax: 240,
+        classification: 'ISO 6'
+      };
+
+      const result = await calculationService.calculateRoomHVAC(roomData, zoneData);
+
+      expect(result.coolingLoadTr).toBeGreaterThan(0);
+    });
+
+    it('should calculate correct ACPH based on classification', async () => {
+      const roomData = {
+        length: 3,
+        width: 3,
+        height: 2.4
+      };
+
+      const zoneData = {
+        acphMin: 150,
+        acphMax: 240,
+        classification: 'ISO 6'
+      };
+
+      const result = await calculationService.calculateRoomHVAC(roomData, zoneData);
+
+      expect(result.acph).toBeGreaterThanOrEqual(150);
+      expect(result.acph).toBeLessThanOrEqual(240);
+    });
+  });
+
+  describe('getAHUSizeByModel', () => {
+    it('should return correct AHU size for given CFM', () => {
+      expect(calculationService.getAHUSizeByModel(1000)).toBe('200');
+      expect(calculationService.getAHUSizeByModel(2000)).toBe('250');
+      expect(calculationService.getAHUSizeByModel(70000)).toBe('Refer');
+    });
+  });
+
+  describe('getMotorHP', () => {
+    it('should calculate motor HP correctly', () => {
+      const hp = calculationService.getMotorHP(5000, 150);
+      expect(hp).toBeGreaterThan(0);
+      expect(typeof hp).toBe('number');
+    });
+  });
+});
+```
+
+### Middleware Testing
+
+```javascript
+// backend/tests/middleware/auth.test.js
+const { authMiddleware, adminMiddleware } = require('../../middleware/auth');
+const jwt = require('jsonwebtoken');
+
+describe('Auth Middleware', () => {
+  let req, res, next;
+
+  beforeEach(() => {
+    req = {
+      header: jest.fn()
+    };
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    next = jest.fn();
+  });
+
+  describe('authMiddleware', () => {
+    it('should call next() with valid token', () => {
+      const token = jwt.sign({ id: 1, role: 'customer' }, process.env.JWT_SECRET);
+      req.header.mockReturnValue(`Bearer ${token}`);
+
+      authMiddleware(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toBeDefined();
+      expect(req.user.id).toBe(1);
+    });
+
+    it('should return 401 without token', () => {
+      req.header.mockReturnValue(null);
+
+      authMiddleware(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should return 401 with invalid token', () => {
+      req.header.mockReturnValue('Bearer invalid_token');
+
+      authMiddleware(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+  });
+
+  describe('adminMiddleware', () => {
+    it('should call next() for admin user', () => {
+      req.user = { id: 1, role: 'admin' };
+
+      adminMiddleware(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should return 403 for non-admin user', () => {
+      req.user = { id: 2, role: 'customer' };
+
+      adminMiddleware(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+});
+```
+
+## Frontend Testing Patterns
+
+### Component Testing
+
+```javascript
+// frontend/src/components/__tests__/Navbar.test.js
+import { render, screen, fireEvent } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import Navbar from '../Navbar';
+
+jest.mock('../../services/api', () => ({
+  authService: {
+    getCurrentUser: jest.fn(),
+    logout: jest.fn()
+  }
+}));
+
+describe('Navbar Component', () => {
+  const mockUser = {
+    firstName: 'John',
+    lastName: 'Doe',
+    role: 'admin'
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('should render navigation links', () => {
+    render(
+      <BrowserRouter>
+        <Navbar />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Cleanroom HVAC/i)).toBeInTheDocument();
+    expect(screen.getByText(/Dashboard/i)).toBeInTheDocument();
+    expect(screen.getByText(/Projects/i)).toBeInTheDocument();
+  });
+
+  it('should show admin link for admin users', async () => {
+    const { authService } = require('../../services/api');
+    authService.getCurrentUser.mockResolvedValue({ data: mockUser });
+
+    render(
+      <BrowserRouter>
+        <Navbar />
+      </BrowserRouter>
+    );
+
+    // Wait for user data to load
+    const customersLink = await screen.findByText(/Customers/i);
+    expect(customersLink).toBeInTheDocument();
+  });
+
+  it('should handle logout', async () => {
+    const { authService } = require('../../services/api');
+    
+    render(
+      <BrowserRouter>
+        <Navbar />
+      </BrowserRouter>
+    );
+
+    const logoutButton = screen.getByText(/Logout/i);
+    fireEvent.click(logoutButton);
+
+    expect(authService.logout).toHaveBeenCalled();
+  });
+});
+```
+
+### Page Testing
+
+```javascript
+// frontend/src/pages/__tests__/Login.test.js
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import Login from '../Login';
+import { authService } from '../../services/api';
+
+jest.mock('../../services/api');
+
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate
+}));
+
+describe('Login Page', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should render login form', () => {
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Login/i })).toBeInTheDocument();
+  });
+
+  it('should handle successful login', async () => {
+    const mockResponse = {
+      data: {
+        token: 'mock_token',
+        user: { id: 1, username: 'testuser' }
+      }
+    };
+    authService.login.mockResolvedValue(mockResponse);
+
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText(/Username/i), {
+      target: { value: 'testuser' }
+    });
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'password123' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Login/i }));
+
+    await waitFor(() => {
+      expect(authService.login).toHaveBeenCalledWith({
+        username: 'testuser',
+        password: 'password123'
+      });
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('should display error on failed login', async () => {
+    authService.login.mockRejectedValue({
+      response: { data: { message: 'Invalid credentials' } }
+    });
+
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText(/Username/i), {
+      target: { value: 'wronguser' }
+    });
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'wrongpass' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid credentials/i)).toBeInTheDocument();
+    });
+  });
+});
+```
+
+## Test Coverage Goals
+
+### Minimum Coverage Requirements
+
+- **Overall:** 80%
+- **Controllers:** 90%
+- **Services:** 95%
+- **Middleware:** 95%
+- **Components:** 75%
+- **Pages:** 70%
+
+### Priority Testing Order
+
+1. **Critical Path:**
+   - Authentication flow
+   - Project creation
+   - HVAC calculations
+   - Database operations
+
+2. **High Priority:**
+   - Admin functions
+   - Data validation
+   - Error handling
+   - Authorization checks
+
+3. **Medium Priority:**
+   - UI components
+   - Form validation
+   - Navigation
+
+4. **Low Priority:**
+   - Styling tests
+   - Non-critical features
+
+## Running Tests
+
+### Backend Tests
+```bash
+cd backend
+npm test                    # Run all tests
+npm test -- --coverage      # With coverage
+npm test -- --watch         # Watch mode
+npm test projectController  # Specific test file
+```
+
+### Frontend Tests
+```bash
+cd frontend
+npm test                    # Run all tests
+npm test -- --coverage      # With coverage
+npm test -- --watch         # Watch mode
+npm test Login              # Specific test
+```
+
+## Best Practices
+
+1. **Arrange-Act-Assert Pattern:**
+   - Arrange: Set up test data
+   - Act: Execute the function
+   - Assert: Verify the results
+
+2. **Test Isolation:**
+   - Each test should be independent
+   - Clean up after each test
+   - Don't rely on test execution order
+
+3. **Descriptive Test Names:**
+   - Use "should" statements
+   - Be specific about what's being tested
+   - Include expected behavior
+
+4. **Mock External Dependencies:**
+   - Database calls
+   - API requests
+   - Third-party services
+
+5. **Test Edge Cases:**
+   - Empty inputs
+   - Null values
+   - Maximum values
+   - Invalid data types
+
+6. **Don't Test Implementation:**
+   - Test behavior, not code structure
+   - Focus on inputs and outputs
+   - Avoid testing private methods directly
+
+## Coverage Report
+
+Generate coverage reports:
+```bash
+# Backend
+cd backend && npm test -- --coverage --coverageDirectory=coverage
+
+# Frontend
+cd frontend && npm test -- --coverage --coverageDirectory=coverage
+```
+
+View HTML reports:
+- Backend: `backend/coverage/lcov-report/index.html`
+- Frontend: `frontend/coverage/lcov-report/index.html`
+
+## Integration Testing
+
+Test complete workflows:
+```javascript
+describe('Complete Project Creation Flow', () => {
+  it('should create project from login to calculations', async () => {
+    // 1. Login
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'testuser', password: 'testpass' });
+    
+    const token = loginResponse.body.token;
+
+    // 2. Create Project
+    const projectResponse = await request(app)
+      .post('/api/projects')
+      .set('Authorization', `Bearer ${token}`)
+      .send(projectData);
+    
+    const projectId = projectResponse.body.projectId;
+
+    // 3. Verify Calculations
+    const detailsResponse = await request(app)
+      .get(`/api/projects/${projectId}`)
+      .set('Authorization', `Bearer ${token}`);
+    
+    expect(detailsResponse.body.zones[0].rooms[0]).toHaveProperty('area_sqm');
+  });
+});
+```
+
+## Continuous Integration
+
+Add to CI/CD pipeline:
+```yaml
+# .github/workflows/test.yml
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Backend Tests
+        run: cd backend && npm test -- --coverage
+      - name: Frontend Tests
+        run: cd frontend && npm test -- --coverage
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v2
+```
