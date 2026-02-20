@@ -186,7 +186,7 @@ const ProjectDetails = () => {
                           <td><strong>Static Pressure</strong></td>
                           <td>{room.static_pressure}</td>
                           <td><strong>Motor HP</strong></td>
-                          <td>{room.motor_hp}</td>
+                          <td>{room.motor_hp ?? 'Refer'}</td>
                         </tr>
                         <tr>
                           <td><strong>Cooling Coil Rows</strong></td>

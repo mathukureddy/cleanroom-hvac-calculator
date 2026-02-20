@@ -142,6 +142,11 @@ exports.createProject = async (req, res) => {
             // Calculate HVAC parameters
             const calculations = await calculationService.calculateRoomHVAC(room, zone);
             
+            // Coerce numeric fields: DB columns are DECIMAL, calculationService may return 'Refer'
+            const motorHpDb = (typeof calculations.motorHp === 'number' && !isNaN(calculations.motorHp))
+              ? calculations.motorHp
+              : null;
+            
             // Save calculations
             await connection.query(
               `INSERT INTO PROJECT_ZONE_CALCULATIONS (
@@ -157,7 +162,7 @@ exports.createProject = async (req, res) => {
                 calculations.dehumidificationCfm, calculations.resultantCfm, calculations.terminalSupplySqft,
                 calculations.coolingLoadTr, calculations.roomAcLoadTr, calculations.cfmAcLoadTr,
                 calculations.ahuCfm, calculations.ahuSize, calculations.staticPressure,
-                calculations.blowerModel, calculations.motorHp, calculations.coolingCoilRows,
+                calculations.blowerModel, motorHpDb, calculations.coolingCoilRows,
                 calculations.ahuCoolingLoadTr, calculations.filterStages, calculations.chilledWaterGpm,
                 calculations.chilledWaterLps, calculations.flowVelocityMs, calculations.pipeSizeMm,
                 calculations.acph
